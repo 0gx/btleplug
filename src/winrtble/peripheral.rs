@@ -48,9 +48,6 @@ use windows::core::GUID;
 use windows::Devices::Bluetooth::GenericAttributeProfile::GattCharacteristic;
 use windows::Devices::Bluetooth::{Advertisement::*, BluetoothAddressType};
 
-/// The default MTU size for a peripheral.
-const DEFAULT_MTU_SIZE: u16 = 23;
-
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -100,7 +97,7 @@ impl Peripheral {
                 adapter,
                 device: tokio::sync::Mutex::new(None),
                 address,
-                mtu: AtomicU16::new(DEFAULT_MTU_SIZE),
+                mtu: AtomicU16::new(api::DEFAULT_MTU_SIZE),
                 connected: AtomicBool::new(false),
                 ble_services: DashMap::new(),
                 notifications_channel: broadcast_sender,
