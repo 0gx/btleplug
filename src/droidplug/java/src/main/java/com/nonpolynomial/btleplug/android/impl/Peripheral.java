@@ -126,6 +126,11 @@ class Peripheral {
     }
 
     @SuppressLint("MissingPermission")
+    public String getDeviceName() {
+        return this.device.getName();
+    }
+
+    @SuppressLint("MissingPermission")
     public Future<byte[]> read(UUID uuid) {
         SimpleFuture<byte[]> future = new SimpleFuture<>();
         synchronized (this) {
