@@ -148,7 +148,7 @@ impl CharacteristicInternal {
 pub enum CoreBluetoothReply {
     AdapterState(CBManagerState),
     ReadResult(Vec<u8>),
-    Connected(BTreeSet<Service>),
+    Connected(BTreeSet<Service>, u16),
     State(CBPeripheralState),
     Ok,
     Err(String),
@@ -317,12 +317,18 @@ impl PeripheralInternal {
                         .collect(),
                 })
                 .collect();
+            let mtu = unsafe {
+                self.peripheral.maximumWriteValueLengthForType(
+                    CBCharacteristicWriteType::CBCharacteristicWriteWithoutResponse,
+                )
+            } as u16
+                + 3;
             self.connected_future_state
                 .take()
                 .unwrap()
                 .lock()
                 .unwrap()
-                .set_reply(CoreBluetoothReply::Connected(services));
+                .set_reply(CoreBluetoothReply::Connected(services, mtu));
         }
     }
 
