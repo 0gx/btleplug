@@ -150,6 +150,7 @@ impl CharacteristicInternal {
 pub enum CoreBluetoothReply {
     AdapterState(CBManagerState),
     ReadResult(Vec<u8>),
+    ReadRssi(i16),
     Connected(BTreeSet<Service>, u16),
     State(CBPeripheralState),
     Ok,
@@ -163,6 +164,7 @@ pub enum PeripheralEventInternal {
     ManufacturerData(u16, Vec<u8>, i16),
     ServiceData(HashMap<Uuid, Vec<u8>>, i16),
     Services(Vec<Uuid>, i16),
+    RssiRead(i16),
 }
 
 pub type CoreBluetoothReplyStateShared = BtlePlugFutureStateShared<CoreBluetoothReply>;
@@ -180,6 +182,7 @@ struct PeripheralInternal {
     pub event_sender: Sender<PeripheralEventInternal>,
     pub disconnected_future_state: Option<CoreBluetoothReplyStateShared>,
     pub connected_future_state: Option<CoreBluetoothReplyStateShared>,
+    pub read_rssi_future_state: VecDeque<CoreBluetoothReplyStateShared>,
 }
 
 impl Debug for PeripheralInternal {
@@ -211,6 +214,7 @@ impl PeripheralInternal {
             event_sender,
             connected_future_state: None,
             disconnected_future_state: None,
+            read_rssi_future_state: VecDeque::with_capacity(4),
         }
     }
 
@@ -341,8 +345,13 @@ impl PeripheralInternal {
             future.lock().unwrap().set_reply(CoreBluetoothReply::Ok)
         }
 
-        // Fulfill all pending futures
+        // Fulfill pending RSSI futures
         let error = CoreBluetoothReply::Err(String::from("Device disconnected"));
+        for state in self.read_rssi_future_state.drain(..) {
+            state.lock().unwrap().set_reply(error.clone());
+        }
+
+        // Fulfill all pending futures
         self.services.iter().for_each(|(_, service)| {
             service
                 .characteristics
@@ -458,6 +467,10 @@ pub enum CoreBluetoothMessage {
         characteristic_uuid: Uuid,
         descriptor_uuid: Uuid,
         data: Vec<u8>,
+        future: CoreBluetoothReplyStateShared,
+    },
+    ReadRssi {
+        peripheral_uuid: Uuid,
         future: CoreBluetoothReplyStateShared,
     },
 }
@@ -1043,6 +1056,40 @@ impl CoreBluetoothInternal {
         }
     }
 
+    fn read_rssi(
+        &mut self,
+        peripheral_uuid: Uuid,
+        fut: CoreBluetoothReplyStateShared,
+    ) {
+        if let Some(peripheral) = self.peripherals.get_mut(&peripheral_uuid) {
+            trace!("Reading RSSI!");
+            unsafe {
+                peripheral.peripheral.readRSSI();
+            }
+            peripheral.read_rssi_future_state.push_front(fut);
+        }
+    }
+
+    async fn on_read_rssi(&mut self, peripheral_uuid: Uuid, rssi: i16) {
+        if let Some(peripheral) = self.peripherals.get_mut(&peripheral_uuid) {
+            trace!("Got RSSI read event: {}", rssi);
+            if let Some(state) = peripheral.read_rssi_future_state.pop_back() {
+                state
+                    .lock()
+                    .unwrap()
+                    .set_reply(CoreBluetoothReply::ReadRssi(rssi));
+            }
+            // Also send as a peripheral event for CentralEvent emission
+            if let Err(e) = peripheral
+                .event_sender
+                .send(PeripheralEventInternal::RssiRead(rssi))
+                .await
+            {
+                error!("Error sending RSSI event: {}", e);
+            }
+        }
+    }
+
     async fn on_descriptor_read(
         &mut self,
         peripheral_uuid: Uuid,
@@ -1166,6 +1213,9 @@ impl CoreBluetoothInternal {
                         characteristic_uuid,
                         descriptor_uuid,
                     } => self.on_descriptor_written(peripheral_uuid, service_uuid, characteristic_uuid, descriptor_uuid),
+                    CentralDelegateEvent::DidReadRssi{peripheral_uuid, rssi} => {
+                        self.on_read_rssi(peripheral_uuid, rssi).await
+                    },
                 };
             }
             adapter_msg = self.message_receiver.select_next_some() => {
@@ -1212,6 +1262,9 @@ impl CoreBluetoothInternal {
                         data,
                         future,
                     } => self.write_descriptor_value(peripheral_uuid, service_uuid, characteristic_uuid, descriptor_uuid, data, future),
+                    CoreBluetoothMessage::ReadRssi{peripheral_uuid, future} => {
+                        self.read_rssi(peripheral_uuid, future)
+                    }
                 };
             }
         }
