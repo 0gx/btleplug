@@ -1,6 +1,6 @@
 //! Helper to discover and connect to the btleplug test peripheral.
 
-use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter};
+use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter, WriteType};
 use btleplug::platform::{Manager, Peripheral};
 use std::time::Duration;
 use tokio::time;
@@ -83,8 +83,6 @@ pub async fn find_and_connect() -> Peripheral {
 
 /// Send a control command to the test peripheral's Control Point characteristic.
 pub async fn send_control_command(peripheral: &Peripheral, opcode: u8) {
-    use btleplug::api::WriteType;
-
     let chars = peripheral.characteristics();
     let control_point = chars
         .iter()
@@ -109,7 +107,6 @@ pub fn find_characteristic(
     peripheral: &Peripheral,
     uuid: uuid::Uuid,
 ) -> btleplug::api::Characteristic {
-    use btleplug::api::Peripheral as _;
     peripheral
         .characteristics()
         .into_iter()

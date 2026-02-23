@@ -27,8 +27,8 @@ pub const CONFIGURABLE_NOTIFY: Uuid = Uuid::from_u128(0x00000303_b5a3_f393_e0a9_
 // --- Descriptor Test Service ---
 pub const DESCRIPTOR_SERVICE: Uuid = Uuid::from_u128(0x00000004_b5a3_f393_e0a9_e50e24dcca9e);
 pub const DESCRIPTOR_TEST_CHAR: Uuid = Uuid::from_u128(0x00000401_b5a3_f393_e0a9_e50e24dcca9e);
-pub const READ_ONLY_DESCRIPTOR: Uuid = Uuid::from_u128(0x000004A1_b5a3_f393_e0a9_e50e24dcca9e);
-pub const READ_WRITE_DESCRIPTOR: Uuid = Uuid::from_u128(0x000004A2_b5a3_f393_e0a9_e50e24dcca9e);
+pub const READ_ONLY_DESCRIPTOR: Uuid = Uuid::from_u128(0x000004a1_b5a3_f393_e0a9_e50e24dcca9e);
+pub const READ_WRITE_DESCRIPTOR: Uuid = Uuid::from_u128(0x000004a2_b5a3_f393_e0a9_e50e24dcca9e);
 
 // --- Control Point opcodes ---
 pub const CMD_START_NOTIFICATIONS: u8 = 0x01;

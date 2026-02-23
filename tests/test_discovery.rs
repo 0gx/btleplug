@@ -1,7 +1,6 @@
 mod common;
 
-use btleplug::api::{Central, Manager as _, Peripheral as _};
-use btleplug::platform::Manager;
+use btleplug::api::Peripheral as _;
 
 #[tokio::test]
 #[ignore = "requires BLE test peripheral"]
