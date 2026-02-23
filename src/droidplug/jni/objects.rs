@@ -26,6 +26,8 @@ pub struct JPeripheral<'a: 'b, 'b> {
     write_descriptor: JMethodID<'a>,
     get_device_name: JMethodID<'a>,
     request_mtu: JMethodID<'a>,
+    get_connection_parameters: JMethodID<'a>,
+    request_connection_priority: JMethodID<'a>,
     env: &'b JNIEnv<'a>,
 }
 
@@ -110,6 +112,10 @@ impl<'a: 'b, 'b> JPeripheral<'a, 'b> {
             "requestMtu",
             "(I)Lio/github/gedgygedgy/rust/future/Future;",
         )?;
+        let get_connection_parameters =
+            env.get_method_id(class, "getConnectionParameters", "()[I")?;
+        let request_connection_priority =
+            env.get_method_id(class, "requestConnectionPriority", "(I)Z")?;
         Ok(Self {
             internal: obj,
             connect,
@@ -124,6 +130,8 @@ impl<'a: 'b, 'b> JPeripheral<'a, 'b> {
             write_descriptor,
             get_device_name,
             request_mtu,
+            get_connection_parameters,
+            request_connection_priority,
             env,
         })
     }
@@ -302,6 +310,46 @@ impl<'a: 'b, 'b> JPeripheral<'a, 'b> {
                 &[mtu.into()],
             )?
             .l()
+    }
+
+    pub fn get_connection_parameters(&self) -> Result<Option<crate::api::ConnectionParameters>> {
+        let obj = self
+            .env
+            .call_method_unchecked(
+                self.internal,
+                self.get_connection_parameters,
+                JavaType::Array(JavaType::Primitive(Primitive::Int).into()),
+                &[],
+            )?
+            .l()?;
+        if obj.is_null() {
+            return Ok(None);
+        }
+        let arr = obj.into_inner();
+        let len = self.env.get_array_length(arr)?;
+        if len < 3 {
+            return Ok(None);
+        }
+        let mut buf = [0i32; 3];
+        self.env.get_int_array_region(arr, 0, &mut buf)?;
+        // interval is in 1.25ms units → microseconds: × 1250
+        // timeout is in 10ms units → microseconds: × 10000
+        Ok(Some(crate::api::ConnectionParameters {
+            interval_us: (buf[0] as u32) * 1250,
+            latency: buf[1] as u16,
+            supervision_timeout_us: (buf[2] as u32) * 10_000,
+        }))
+    }
+
+    pub fn request_connection_priority(&self, priority: jint) -> Result<bool> {
+        self.env
+            .call_method_unchecked(
+                self.internal,
+                self.request_connection_priority,
+                JavaType::Primitive(Primitive::Boolean),
+                &[priority.into()],
+            )?
+            .z()
     }
 
     pub fn write_descriptor(

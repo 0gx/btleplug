@@ -31,6 +31,11 @@ class Peripheral {
     private final Callback callback;
     private boolean connected = false;
 
+    // Cached connection parameters from onConnectionUpdated callback
+    private int connectionInterval = -1;  // in 1.25ms units
+    private int connectionLatency = -1;
+    private int supervisionTimeout = -1;  // in 10ms units
+
     private final Queue<Runnable> commandQueue = new LinkedList<>();
     private final LinkedList<WeakReference<QueueStream<BluetoothGattCharacteristic>>> notificationStreams = new LinkedList<>();
     private boolean executingCommand = false;
@@ -128,6 +133,29 @@ class Peripheral {
     @SuppressLint("MissingPermission")
     public String getDeviceName() {
         return this.device.getName();
+    }
+
+    /**
+     * Returns cached connection parameters as [interval, latency, timeout],
+     * or null if not yet available. Interval is in 1.25ms units, timeout in 10ms units.
+     */
+    public synchronized int[] getConnectionParameters() {
+        if (this.connectionInterval < 0) {
+            return null;
+        }
+        return new int[] { this.connectionInterval, this.connectionLatency, this.supervisionTimeout };
+    }
+
+    /**
+     * Request a connection priority change.
+     * @param priority 0=BALANCED, 1=HIGH, 2=LOW_POWER
+     */
+    @SuppressLint("MissingPermission")
+    public synchronized boolean requestConnectionPriority(int priority) {
+        if (!this.connected || this.gatt == null) {
+            throw new NotConnectedException();
+        }
+        return this.gatt.requestConnectionPriority(priority);
     }
 
     @SuppressLint("MissingPermission")
@@ -580,6 +608,17 @@ class Peripheral {
             synchronized (Peripheral.this) {
                 if (Peripheral.this.commandCallback != null) {
                     Peripheral.this.commandCallback.onMtuChanged(gatt, mtu, status);
+                }
+            }
+        }
+
+        @Override
+        public void onConnectionUpdated(BluetoothGatt gatt, int interval, int latency, int timeout, int status) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                synchronized (Peripheral.this) {
+                    Peripheral.this.connectionInterval = interval;
+                    Peripheral.this.connectionLatency = latency;
+                    Peripheral.this.supervisionTimeout = timeout;
                 }
             }
         }

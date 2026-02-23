@@ -1,7 +1,7 @@
 use crate::{
     api::{
-        self, BDAddr, Characteristic, Descriptor, PeripheralProperties, Service, ValueNotification,
-        WriteType,
+        self, BDAddr, Characteristic, ConnectionParameterPreset, ConnectionParameters, Descriptor,
+        PeripheralProperties, Service, ValueNotification, WriteType,
     },
     Error, Result,
 };
@@ -446,6 +446,35 @@ impl api::Peripheral for Peripheral {
             let result = JPollResult::from_env(env, result_ref.as_obj())?;
             let bytes = get_poll_result(env, result)?;
             Ok(byte_array_to_vec(env, bytes.into_inner())?)
+        })
+    }
+
+    async fn connection_parameters(&self) -> Result<Option<ConnectionParameters>> {
+        self.with_obj(|_env, obj| {
+            Ok(obj.get_connection_parameters().map_err(|e| Error::Other(format!("{:?}", e).into()))?)
+        })
+    }
+
+    async fn request_connection_parameters(
+        &self,
+        preset: ConnectionParameterPreset,
+    ) -> Result<()> {
+        let priority = match preset {
+            ConnectionParameterPreset::Balanced => 0,          // CONNECTION_PRIORITY_BALANCED
+            ConnectionParameterPreset::ThroughputOptimized => 1, // CONNECTION_PRIORITY_HIGH
+            ConnectionParameterPreset::PowerOptimized => 2,    // CONNECTION_PRIORITY_LOW_POWER
+        };
+        self.with_obj(|_env, obj| {
+            let success = obj
+                .request_connection_priority(priority)
+                .map_err(|e| Error::Other(format!("{:?}", e).into()))?;
+            if success {
+                Ok(())
+            } else {
+                Err(Error::RuntimeError(
+                    "requestConnectionPriority returned false".to_string(),
+                ))
+            }
         })
     }
 }
