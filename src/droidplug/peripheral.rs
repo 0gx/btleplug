@@ -421,6 +421,17 @@ impl api::Peripheral for Peripheral {
         Ok(Box::pin(stream))
     }
 
+    async fn read_rssi(&self) -> Result<i16> {
+        let future = self.with_obj(|_env, obj| JSendFuture::try_from(obj.read_remote_rssi()?))?;
+        let result_ref = future.await?;
+        self.with_obj(|env, _obj| {
+            let result = JPollResult::from_env(env, result_ref.as_obj())?;
+            let rssi_obj = get_poll_result(env, result)?;
+            let rssi_val = env.call_method(rssi_obj, "intValue", "()I", &[])?.i()?;
+            Ok(rssi_val as i16)
+        })
+    }
+
     async fn write_descriptor(&self, descriptor: &Descriptor, data: &[u8]) -> Result<()> {
         let future = self.with_obj(|env, obj| {
             let characteristic = JUuid::new(env, descriptor.characteristic_uuid)?;

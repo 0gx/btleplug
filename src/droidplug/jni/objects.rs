@@ -28,6 +28,7 @@ pub struct JPeripheral<'a: 'b, 'b> {
     request_mtu: JMethodID<'a>,
     get_connection_parameters: JMethodID<'a>,
     request_connection_priority: JMethodID<'a>,
+    read_remote_rssi: JMethodID<'a>,
     env: &'b JNIEnv<'a>,
 }
 
@@ -116,6 +117,11 @@ impl<'a: 'b, 'b> JPeripheral<'a, 'b> {
             env.get_method_id(class, "getConnectionParameters", "()[I")?;
         let request_connection_priority =
             env.get_method_id(class, "requestConnectionPriority", "(I)Z")?;
+        let read_remote_rssi = env.get_method_id(
+            class,
+            "readRemoteRssi",
+            "()Lio/github/gedgygedgy/rust/future/Future;",
+        )?;
         Ok(Self {
             internal: obj,
             connect,
@@ -132,6 +138,7 @@ impl<'a: 'b, 'b> JPeripheral<'a, 'b> {
             request_mtu,
             get_connection_parameters,
             request_connection_priority,
+            read_remote_rssi,
             env,
         })
     }
@@ -339,6 +346,17 @@ impl<'a: 'b, 'b> JPeripheral<'a, 'b> {
             latency: buf[1] as u16,
             supervision_timeout_us: (buf[2] as u32) * 10_000,
         }))
+    }
+
+    pub fn read_remote_rssi(&self) -> Result<JObject<'a>> {
+        self.env
+            .call_method_unchecked(
+                self.internal,
+                self.read_remote_rssi,
+                JavaType::Object("Lio/github/gedgygedgy/rust/future/Future;".to_string()),
+                &[],
+            )?
+            .l()
     }
 
     pub fn request_connection_priority(&self, priority: jint) -> Result<bool> {

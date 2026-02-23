@@ -455,6 +455,35 @@ class Peripheral {
     }
 
     @SuppressLint("MissingPermission")
+    public Future<Integer> readRemoteRssi() {
+        SimpleFuture<Integer> future = new SimpleFuture<>();
+        synchronized (this) {
+            this.queueCommand(() -> {
+                this.asyncWithFuture(future, () -> {
+                    if (!this.connected) {
+                        throw new NotConnectedException();
+                    }
+                    this.setCommandCallback(new CommandCallback() {
+                        @Override
+                        public void onReadRemoteRssi(BluetoothGatt gatt, int rssi, int status) {
+                            Peripheral.this.asyncWithFuture(future, () -> {
+                                if (status != BluetoothGatt.GATT_SUCCESS) {
+                                    throw new RuntimeException("RSSI read failed");
+                                }
+                                Peripheral.this.wakeCommand(future, rssi);
+                            });
+                        }
+                    });
+                    if (!this.gatt.readRemoteRssi()) {
+                        throw new RuntimeException("Unable to read remote RSSI");
+                    }
+                });
+            });
+        }
+        return future;
+    }
+
+    @SuppressLint("MissingPermission")
     private List<BluetoothGattCharacteristic> getCharacteristics() {
         List<BluetoothGattCharacteristic> result = new ArrayList<>();
         if (this.gatt != null) {
@@ -613,6 +642,15 @@ class Peripheral {
         }
 
         @Override
+        public void onReadRemoteRssi(BluetoothGatt gatt, int rssi, int status) {
+            synchronized (Peripheral.this) {
+                if (Peripheral.this.commandCallback != null) {
+                    Peripheral.this.commandCallback.onReadRemoteRssi(gatt, rssi, status);
+                }
+            }
+        }
+
+        @Override
         public void onConnectionUpdated(BluetoothGatt gatt, int interval, int latency, int timeout, int status) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 synchronized (Peripheral.this) {
@@ -658,6 +696,11 @@ class Peripheral {
 
         @Override
         public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
+            throw new UnexpectedCallbackException();
+        }
+
+        @Override
+        public void onReadRemoteRssi(BluetoothGatt gatt, int rssi, int status) {
             throw new UnexpectedCallbackException();
         }
     }
