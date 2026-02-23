@@ -793,11 +793,11 @@ fn get_descriptor_value(descriptor: &CBDescriptor) -> Vec<u8> {
 
 fn peripheral_debug(peripheral: &CBPeripheral) -> String {
     let uuid = unsafe { peripheral.identifier() }.UUIDString();
-    if let Some(name) = unsafe { peripheral.name() } {
+    match unsafe { peripheral.name() } { Some(name) => {
         format!("CBPeripheral({}, {})", name, uuid)
-    } else {
+    } _ => {
         format!("CBPeripheral({})", uuid)
-    }
+    }}
 }
 
 fn service_debug(service: &CBService) -> String {
