@@ -346,6 +346,20 @@ pub trait Peripheral: Send + Sync + Clone + Debug {
             "request_connection_parameters".to_string(),
         ))
     }
+
+    /// Read the current RSSI (signal strength) for this peripheral, in dBm.
+    ///
+    /// Behavior varies by platform:
+    /// - **macOS/iOS/Android**: Actively reads RSSI from the connected device.
+    /// - **Linux**: Returns the latest RSSI from BlueZ device properties.
+    /// - **Windows**: Returns the most recent RSSI from advertisements
+    ///   (requires scanning to be active for fresh values).
+    ///
+    /// Returns `Err(NotConnected)` if not connected (except Windows, which may
+    /// return a cached scan value).
+    async fn read_rssi(&self) -> Result<i16> {
+        Err(crate::Error::NotSupported("read_rssi".to_string()))
+    }
 }
 
 #[cfg_attr(
@@ -386,6 +400,13 @@ pub enum CentralEvent {
     ServicesAdvertisement {
         id: PeripheralId,
         services: Vec<Uuid>,
+    },
+    /// Emitted when an RSSI (signal strength) update is received for a device.
+    /// This may come from advertisements during scanning, or from an active
+    /// `read_rssi()` call on connected platforms.
+    RssiUpdate {
+        id: PeripheralId,
+        rssi: i16,
     },
     StateUpdate(CentralState),
 }
