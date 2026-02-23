@@ -3,7 +3,6 @@ mod common;
 use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::Manager;
 use futures::StreamExt;
-use std::collections::HashMap;
 use std::time::Duration;
 use tokio::time;
 
