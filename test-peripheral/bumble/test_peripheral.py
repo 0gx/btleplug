@@ -16,7 +16,7 @@ import logging
 import struct
 import sys
 
-from bumble.core import UUID as BumbleUUID
+from bumble.core import UUID as BumbleUUID, AdvertisingData
 from bumble.device import Device, Connection
 from bumble.gatt import (
     Service,
@@ -83,6 +83,7 @@ class TestPeripheralState:
         self.rw_value = bytearray()
         self.long_value = bytearray(512)
         self.write_with_resp_value = bytearray()
+        self.write_without_resp_value = bytearray()
         self.notify_payload = bytearray()
         self.rw_descriptor_value = bytearray()
         self.notify_task: asyncio.Task | None = None
@@ -111,7 +112,7 @@ def write_with_resp(_connection, value):
 
 
 def write_without_resp(_connection, value):
-    state.write_with_resp_value = bytearray(value)
+    state.write_without_resp_value = bytearray(value)
     logger.info("Write without response: %d bytes", len(value))
 
 
@@ -393,8 +394,6 @@ async def main():
         await device.power_on()
 
         # Set up advertising data
-        from bumble.core import AdvertisingData
-
         device.advertising_data = bytes(
             AdvertisingData(
                 [
