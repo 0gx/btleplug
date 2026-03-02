@@ -3,14 +3,18 @@
 # Run each integration test individually to avoid multiple simultaneous
 # BLE connections to the same test peripheral.
 #
+# Each test_*.rs file under tests/ is its own binary with a single test,
+# ensuring process isolation for BLE stack stability.
+#
 # Usage:
 #   ./scripts/run-integration-tests.sh              # run all tests
-#   ./scripts/run-integration-tests.sh test_discovery # run only tests from one module
+#   ./scripts/run-integration-tests.sh test_read_*   # run tests matching a glob
 #
 # Environment:
 #   BTLEPLUG_TEST_PERIPHERAL  - peripheral name (default: btleplug-test)
 #   RUST_LOG                  - log level (e.g. debug, btleplug=trace)
 #   DELAY                     - seconds to wait between tests (default: 2)
+#   TIMEOUT                   - seconds before a test is killed (default: 20)
 
 set -euo pipefail
 
@@ -18,135 +22,73 @@ DELAY="${DELAY:-2}"
 TIMEOUT="${TIMEOUT:-20}"
 PASSED=0
 FAILED=0
-SKIPPED=0
 FAILURES=()
 
-# Modules and their tests as parallel arrays (avoids bash 4+ associative arrays
-# so the script works with macOS default bash 3.2).
-MODULE_NAMES=(
-  test_discovery
-  test_connection
-  test_read_write
-  test_notifications
-  test_descriptors
-  test_device_info
-)
+# Discover all test binaries (one per file).
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TESTS_DIR="$(cd "$SCRIPT_DIR/../tests" && pwd)"
 
-MODULE_TESTS_test_discovery="
-  test_discover_peripheral_by_name
-  test_discover_services
-  test_discover_characteristics
-  test_scan_filter_by_service_uuid
-  test_advertisement_manufacturer_data
-  test_advertisement_services
-"
-MODULE_TESTS_test_connection="
-  test_connect_and_disconnect
-  test_reconnect_after_disconnect
-  test_peripheral_triggered_disconnect
-"
-MODULE_TESTS_test_read_write="
-  test_read_static_value
-  test_read_counter_increments
-  test_write_with_response
-  test_write_without_response
-  test_read_write_roundtrip
-  test_long_value_read_write
-  test_characteristic_properties
-"
-MODULE_TESTS_test_notifications="
-  test_subscribe_and_receive_notifications
-  test_subscribe_and_receive_indications
-  test_unsubscribe_stops_notifications
-  test_configurable_notification_payload
-"
-MODULE_TESTS_test_descriptors="
-  test_read_only_descriptor
-  test_read_write_descriptor_roundtrip
-  test_descriptor_discovery
-"
-MODULE_TESTS_test_device_info="
-  test_mtu_after_connection
-  test_read_rssi
-  test_properties_contain_peripheral_info
-  test_connection_parameters
-  test_request_connection_parameters
-"
-
-# Helper: get test list for a module via indirect variable expansion.
-get_tests() {
-  local varname="MODULE_TESTS_$1"
-  echo "${!varname}"
-}
-
-# Helper: check if a module name is valid.
-is_valid_module() {
-  local name="$1"
-  for mod in "${MODULE_NAMES[@]}"; do
-    if [[ "$mod" == "$name" ]]; then
-      return 0
+# Build list of test names from test_*.rs files (excluding the common/ module).
+TEST_NAMES=()
+for f in "$TESTS_DIR"/test_*.rs; do
+  name="$(basename "$f" .rs)"
+  # If a filter was provided, apply it as a glob.
+  if [[ $# -gt 0 ]]; then
+    matched=false
+    for pattern in "$@"; do
+      # shellcheck disable=SC2254
+      case "$name" in $pattern) matched=true ;; esac
+    done
+    if ! $matched; then
+      continue
     fi
-  done
-  return 1
-}
-
-# Filter to a single module if an argument was provided.
-if [[ $# -gt 0 ]]; then
-  filter="$1"
-  if ! is_valid_module "$filter"; then
-    echo "Unknown module: $filter"
-    echo "Available modules: ${MODULE_NAMES[*]}"
-    exit 1
   fi
-  MODULE_NAMES=("$filter")
-fi
-
-total=0
-for mod in "${MODULE_NAMES[@]}"; do
-  for test_name in $(get_tests "$mod"); do
-    total=$((total + 1))
-  done
+  TEST_NAMES+=("$name")
 done
 
+if [[ ${#TEST_NAMES[@]} -eq 0 ]]; then
+  echo "No tests matched."
+  [[ $# -gt 0 ]] && echo "Filter: $*"
+  exit 1
+fi
+
+total=${#TEST_NAMES[@]}
 echo "=== btleplug integration tests ==="
 echo "Running $total tests sequentially (${DELAY}s delay, ${TIMEOUT}s timeout per test)"
 echo ""
 
 test_num=0
-for mod in "${MODULE_NAMES[@]}"; do
-  echo "--- Module: $mod ---"
-  for test_name in $(get_tests "$mod"); do
-    test_num=$((test_num + 1))
-    printf "[%2d/%2d] %-50s " "$test_num" "$total" "${mod}::${test_name}"
+for test_name in "${TEST_NAMES[@]}"; do
+  test_num=$((test_num + 1))
+  printf "[%2d/%2d] %-55s " "$test_num" "$total" "$test_name"
 
-    if timeout "${TIMEOUT}s" cargo test --test "$mod" "$test_name" -- --ignored --exact 2>/tmp/btleplug-test-output.log; then
-      echo "PASS"
-      PASSED=$((PASSED + 1))
+  if timeout "${TIMEOUT}s" cargo test --test "$test_name" -- --ignored 2>/tmp/btleplug-test-output.log; then
+    echo "PASS"
+    PASSED=$((PASSED + 1))
+  else
+    exit_code=$?
+    if [[ $exit_code -eq 124 ]]; then
+      echo "TIMEOUT (${TIMEOUT}s)"
     else
-      exit_code=$?
-      if [[ $exit_code -eq 124 ]]; then
-        echo "TIMEOUT (${TIMEOUT}s)"
-      else
-        echo "FAIL"
-      fi
-      FAILED=$((FAILED + 1))
-      FAILURES+=("${mod}::${test_name}")
-      # Show output for failed tests.
-      echo "  --- output ---"
-      sed 's/^/  /' /tmp/btleplug-test-output.log | tail -20
-      echo "  --- end ---"
+      echo "FAIL"
     fi
+    FAILED=$((FAILED + 1))
+    FAILURES+=("$test_name")
+    # Show output for failed tests.
+    echo "  --- output ---"
+    sed 's/^/  /' /tmp/btleplug-test-output.log | tail -20
+    echo "  --- end ---"
+  fi
 
-    # Brief delay to let the BLE stack settle between tests.
-    if [[ $test_num -lt $total ]]; then
-      sleep "$DELAY"
-    fi
-  done
-  echo ""
+  # Brief delay to let the BLE stack settle between tests.
+  if [[ $test_num -lt $total ]]; then
+    sleep "$DELAY"
+  fi
 done
 
 rm -f /tmp/btleplug-test-output.log
 
+echo ""
 echo "=== Results ==="
 echo "  Passed:  $PASSED"
 echo "  Failed:  $FAILED"
