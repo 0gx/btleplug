@@ -1485,7 +1485,7 @@ fn scan_filter_to_service_uuids(filter: ScanFilter) -> Option<Retained<NSArray<C
             .into_iter()
             .map(uuid_to_cbuuid)
             .collect::<Vec<_>>();
-        Some(NSArray::from_vec(service_uuids))
+        Some(NSArray::from_retained_slice(&service_uuids))
     }
 }
 
