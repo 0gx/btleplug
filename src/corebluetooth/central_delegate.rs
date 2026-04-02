@@ -22,7 +22,7 @@ use futures::channel::mpsc::Sender;
 use futures::sink::SinkExt;
 use log::{error, trace};
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{ClassType, DefinedClass, define_class, msg_send, rc::Retained};
+use objc2::{AnyThread, ClassType, DefinedClass, define_class, msg_send, rc::Retained};
 use objc2_core_bluetooth::{
     CBAdvertisementDataLocalNameKey, CBAdvertisementDataManufacturerDataKey,
     CBAdvertisementDataServiceDataKey, CBAdvertisementDataServiceUUIDsKey,
@@ -36,7 +36,6 @@ use objc2_foundation::{
 use std::convert::TryInto;
 use std::{
     collections::HashMap,
-    ffi::CStr,
     fmt::{self, Debug, Formatter},
     ops::Deref,
 };
@@ -417,13 +416,15 @@ define_class!(
                 peripheral_debug(peripheral)
             );
 
-            let advertisement_name = adv_data
-                .get(unsafe { CBAdvertisementDataLocalNameKey })
-                .map(|name| name as *const AnyObject as *const NSString)
-                .and_then(|name| unsafe { nsstring_to_string(name) });
+            let advertisement_name = unsafe {
+                adv_data
+                    .object_for_key(CBAdvertisementDataLocalNameKey)
+                    .map(|name| name as *const AnyObject as *const NSString)
+                    .and_then(|name| nsstring_to_string(name))
+            };
 
             self.send_event(CentralDelegateEvent::DiscoveredPeripheral {
-                cbperipheral: Retained::retain(peripheral),
+                cbperipheral: peripheral.retain(),
                 advertisement_name,
             });
 
@@ -432,7 +433,8 @@ define_class!(
             let id = unsafe { peripheral.identifier() };
             let peripheral_uuid = nsuuid_to_uuid(&id);
 
-            let manufacturer_data = adv_data.get(unsafe { CBAdvertisementDataManufacturerDataKey });
+            let manufacturer_data =
+                unsafe { adv_data.object_for_key(CBAdvertisementDataManufacturerDataKey) };
             if let Some(manufacturer_data) = manufacturer_data {
                 // SAFETY: manufacturer_data is `NSData`
                 let manufacturer_data: *const AnyObject = manufacturer_data;
@@ -441,7 +443,7 @@ define_class!(
 
                 if manufacturer_data.len() >= 2 {
                     let (manufacturer_id, manufacturer_data) =
-                        manufacturer_data.as_bytes().split_at(2);
+                        manufacturer_data.bytes().split_at(2);
 
                     self.send_event(CentralDelegateEvent::ManufacturerData {
                         peripheral_uuid,
@@ -452,7 +454,8 @@ define_class!(
                 }
             }
 
-            let service_data = adv_data.get(unsafe { CBAdvertisementDataServiceDataKey });
+            let service_data =
+                unsafe { adv_data.object_for_key(CBAdvertisementDataServiceDataKey) };
             if let Some(service_data) = service_data {
                 // SAFETY: service_data is `NSDictionary<CBUUID, NSData>`
                 let service_data: *const AnyObject = service_data;
@@ -460,8 +463,12 @@ define_class!(
                 let service_data = unsafe { &*service_data };
 
                 let mut result = HashMap::new();
-                for (uuid, data) in service_data.iter() {
-                    result.insert(cbuuid_to_uuid(uuid), data.as_bytes().to_vec());
+                for uuid in service_data.keys() {
+                    let data = unsafe { service_data.object_for_key(uuid).unwrap() };
+                    let data: *const AnyObject = data;
+                    let data: *const NSData = data.cast();
+                    let data = unsafe { &*data };
+                    result.insert(cbuuid_to_uuid(uuid), data.bytes().to_vec());
                 }
 
                 self.send_event(CentralDelegateEvent::ServiceData {
@@ -471,7 +478,7 @@ define_class!(
                 });
             }
 
-            let services = adv_data.get(unsafe { CBAdvertisementDataServiceUUIDsKey });
+            let services = unsafe { adv_data.object_for_key(CBAdvertisementDataServiceUUIDsKey) };
             if let Some(services) = services {
                 // SAFETY: services is `NSArray<CBUUID>`
                 let services: *const AnyObject = services;
@@ -490,8 +497,7 @@ define_class!(
                 });
             }
 
-            let tx_power_level = adv_data
-                .get(unsafe { CBAdvertisementDataTxPowerLevelKey })
+            let tx_power_level = unsafe { adv_data.object_for_key(CBAdvertisementDataTxPowerLevelKey) }
                 .map(|val| {
                     let val: *const AnyObject = val;
                     let val: *const NSNumber = val.cast();
@@ -888,7 +894,7 @@ fn localized_description(error: Option<&NSError>) -> String {
 
 fn get_characteristic_value(characteristic: &CBCharacteristic) -> Vec<u8> {
     trace!("Getting data!");
-    let v = unsafe { characteristic.value() }.map(|value| value.as_bytes().into());
+    let v = unsafe { characteristic.value() }.map(|value| value.bytes().into());
     trace!("BluetoothGATTCharacteristic::get_value -> {:?}", v);
     v.unwrap_or_default()
 }
@@ -899,7 +905,7 @@ fn get_descriptor_value(descriptor: &CBDescriptor) -> Vec<u8> {
         let mut clazz = value.class();
         // Find the root class until we reach NSObject
         while let Some(superclass) = clazz.superclass() {
-            if superclass == AnyObject::class() {
+            if superclass == NSObject::class() {
                 break;
             }
             clazz = superclass;
@@ -907,15 +913,15 @@ fn get_descriptor_value(descriptor: &CBDescriptor) -> Vec<u8> {
 
         match clazz.name().to_bytes() {
             b"NSString" => {
-                let d: Retained<NSString> = value.cast_unchecked();
+                let d: Retained<NSString> = Retained::cast_unchecked(value);
                 d.to_string().into_bytes()
             }
             b"NSData" => {
-                let d: Retained<NSData> = value.cast_unchecked();
-                d.as_bytes().into()
+                let d: Retained<NSData> = Retained::cast_unchecked(value);
+                d.bytes().into()
             }
             b"NSNumber" => {
-                let d: Retained<NSNumber> = value.cast_unchecked();
+                let d: Retained<NSNumber> = Retained::cast_unchecked(value);
                 d.stringValue().to_string().into_bytes()
             }
             _ => {

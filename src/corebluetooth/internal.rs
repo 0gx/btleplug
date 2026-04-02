@@ -24,7 +24,7 @@ use futures::select;
 use futures::sink::SinkExt;
 use futures::stream::{Fuse, StreamExt};
 use log::{error, trace, warn};
-use objc2::{AnyThread, ClassType, msg_send, rc::Retained, runtime::AnyObject};
+use objc2::{AnyThread, msg_send, rc::Retained, runtime::AnyObject};
 use objc2_core_bluetooth::{
     CBCentralManager, CBCentralManagerScanOptionAllowDuplicatesKey, CBCharacteristic,
     CBCharacteristicProperties, CBCharacteristicWriteType, CBDescriptor, CBManager,
@@ -1452,11 +1452,12 @@ impl CoreBluetoothInternal {
         let mut options = NSMutableDictionary::new();
         // NOTE: If duplicates are not allowed then a peripheral will not show
         // up again once connected and then disconnected.
+        let allow_duplicates = Retained::into_super(Retained::into_super(Retained::into_super(
+            NSNumber::new_bool(true),
+        )));
         options.insert(
             unsafe { CBCentralManagerScanOptionAllowDuplicatesKey },
-            Retained::into_super(Retained::into_super(Retained::into_super(
-                NSNumber::new_bool(true),
-            ))),
+            &allow_duplicates,
         );
         unsafe {
             self.manager
@@ -1481,7 +1482,7 @@ fn scan_filter_to_service_uuids(filter: ScanFilter) -> Option<Retained<NSArray<C
             .into_iter()
             .map(uuid_to_cbuuid)
             .collect::<Vec<_>>();
-        Some(NSArray::from(service_uuids))
+        Some(NSArray::from_vec(&service_uuids))
     }
 }
 
