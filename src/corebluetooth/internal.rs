@@ -1449,7 +1449,7 @@ impl CoreBluetoothInternal {
     fn start_discovery(&mut self, filter: ScanFilter) {
         trace!("BluetoothAdapter::start_discovery");
         let service_uuids = scan_filter_to_service_uuids(filter);
-        let options = unsafe {
+        let options = {
             let dict = NSMutableDictionary::new();
             // NOTE: If duplicates are not allowed then a peripheral will not show
             // up again once connected and then disconnected.
@@ -1485,7 +1485,7 @@ fn scan_filter_to_service_uuids(filter: ScanFilter) -> Option<Retained<NSArray<C
             .into_iter()
             .map(uuid_to_cbuuid)
             .collect::<Vec<_>>();
-        Some(NSArray::from(&service_uuids[..]))
+        Some(NSArray::from_vec(service_uuids))
     }
 }
 
