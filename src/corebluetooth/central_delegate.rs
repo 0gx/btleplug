@@ -22,7 +22,7 @@ use futures::channel::mpsc::Sender;
 use futures::sink::SinkExt;
 use log::{error, trace};
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{ClassType, DeclaredClass, declare_class, msg_send_id, mutability, rc::Retained};
+use objc2::{ClassType, DefinedClass, define_class, msg_send_id, mutability, rc::Retained};
 use objc2_core_bluetooth::{
     CBAdvertisementDataLocalNameKey, CBAdvertisementDataManufacturerDataKey,
     CBAdvertisementDataServiceDataKey, CBAdvertisementDataServiceUUIDsKey,
@@ -334,7 +334,7 @@ impl Debug for CentralDelegateEvent {
     }
 }
 
-declare_class!(
+define_class!(
     #[derive(Debug)]
     pub struct CentralDelegate;
 
@@ -344,7 +344,7 @@ declare_class!(
         const NAME: &'static str = "BtlePlugCentralManagerDelegate";
     }
 
-    impl DeclaredClass for CentralDelegate {
+    impl DefinedClass for CentralDelegate {
         type Ivars = Sender<CentralDelegateEvent>;
     }
 
