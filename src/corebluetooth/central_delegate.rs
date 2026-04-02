@@ -22,7 +22,7 @@ use futures::channel::mpsc::Sender;
 use futures::sink::SinkExt;
 use log::{error, trace};
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{define_class, msg_send_id, rc::Retained};
+use objc2::{ClassType, DefinedClass, define_class, msg_send, rc::Retained};
 use objc2_core_bluetooth::{
     CBAdvertisementDataLocalNameKey, CBAdvertisementDataManufacturerDataKey,
     CBAdvertisementDataServiceDataKey, CBAdvertisementDataServiceUUIDsKey,
@@ -36,6 +36,7 @@ use objc2_foundation::{
 use std::convert::TryInto;
 use std::{
     collections::HashMap,
+    ffi::CStr,
     fmt::{self, Debug, Formatter},
     ops::Deref,
 };
@@ -422,7 +423,7 @@ define_class!(
                 .and_then(|name| unsafe { nsstring_to_string(name) });
 
             self.send_event(CentralDelegateEvent::DiscoveredPeripheral {
-                cbperipheral: peripheral.retain(),
+                cbperipheral: Retained::retain(peripheral),
                 advertisement_name,
             });
 
@@ -440,7 +441,7 @@ define_class!(
 
                 if manufacturer_data.len() >= 2 {
                     let (manufacturer_id, manufacturer_data) =
-                        manufacturer_data.bytes().split_at(2);
+                        manufacturer_data.as_bytes().split_at(2);
 
                     self.send_event(CentralDelegateEvent::ManufacturerData {
                         peripheral_uuid,
@@ -459,9 +460,8 @@ define_class!(
                 let service_data = unsafe { &*service_data };
 
                 let mut result = HashMap::new();
-                for uuid in service_data.keys() {
-                    let data = &service_data[uuid];
-                    result.insert(cbuuid_to_uuid(uuid), data.bytes().to_vec());
+                for (uuid, data) in service_data.iter() {
+                    result.insert(cbuuid_to_uuid(uuid), data.as_bytes().to_vec());
                 }
 
                 self.send_event(CentralDelegateEvent::ServiceData {
@@ -865,7 +865,7 @@ define_class!(
 impl CentralDelegate {
     pub fn new(sender: Sender<CentralDelegateEvent>) -> Retained<Self> {
         let this = CentralDelegate::alloc().set_ivars(sender);
-        unsafe { msg_send_id![super(this), init] }
+        unsafe { msg_send![super(this), init] }
     }
 
     fn send_event(&self, event: CentralDelegateEvent) {
@@ -888,7 +888,7 @@ fn localized_description(error: Option<&NSError>) -> String {
 
 fn get_characteristic_value(characteristic: &CBCharacteristic) -> Vec<u8> {
     trace!("Getting data!");
-    let v = unsafe { characteristic.value() }.map(|value| value.bytes().into());
+    let v = unsafe { characteristic.value() }.map(|value| value.as_bytes().into());
     trace!("BluetoothGATTCharacteristic::get_value -> {:?}", v);
     v.unwrap_or_default()
 }
@@ -899,23 +899,23 @@ fn get_descriptor_value(descriptor: &CBDescriptor) -> Vec<u8> {
         let mut clazz = value.class();
         // Find the root class until we reach NSObject
         while let Some(superclass) = clazz.superclass() {
-            if superclass == NSObject::class() {
+            if superclass == AnyObject::class() {
                 break;
             }
             clazz = superclass;
         }
 
-        match clazz.name() {
-            "NSString" => {
-                let d: Retained<NSString> = Retained::cast(value);
+        match clazz.name().to_bytes() {
+            b"NSString" => {
+                let d: Retained<NSString> = value.cast_unchecked();
                 d.to_string().into_bytes()
             }
-            "NSData" => {
-                let d: Retained<NSData> = Retained::cast(value);
-                d.bytes().into()
+            b"NSData" => {
+                let d: Retained<NSData> = value.cast_unchecked();
+                d.as_bytes().into()
             }
-            "NSNumber" => {
-                let d: Retained<NSNumber> = Retained::cast(value);
+            b"NSNumber" => {
+                let d: Retained<NSNumber> = value.cast_unchecked();
                 d.stringValue().to_string().into_bytes()
             }
             _ => {
