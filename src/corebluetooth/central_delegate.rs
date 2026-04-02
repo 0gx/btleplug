@@ -440,8 +440,8 @@ define_class!(
                 let manufacturer_data: &NSData = unsafe { &*Retained::as_ptr(&manufacturer_data).cast() };
 
                 if manufacturer_data.len() >= 2 {
-                    let (manufacturer_id, manufacturer_data) =
-                        manufacturer_data.to_vec().split_at(2);
+                    let data_vec = manufacturer_data.to_vec();
+                    let (manufacturer_id, manufacturer_data) = data_vec.split_at(2);
 
                     self.send_event(CentralDelegateEvent::ManufacturerData {
                         peripheral_uuid,
@@ -460,7 +460,7 @@ define_class!(
 
                 let mut result = HashMap::new();
                 for uuid in service_data.keys() {
-                    let data = unsafe { service_data.objectForKey(&uuid).unwrap() };
+                    let data = service_data.objectForKey(&uuid).unwrap();
                     let data: &NSData = unsafe { &*Retained::as_ptr(&data).cast() };
                     result.insert(cbuuid_to_uuid(&uuid), data.to_vec());
                 }
