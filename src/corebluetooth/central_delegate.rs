@@ -22,7 +22,7 @@ use futures::channel::mpsc::Sender;
 use futures::sink::SinkExt;
 use log::{error, trace};
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{ClassType, DefinedClass, define_class, msg_send_id, mutability, rc::Retained};
+use objc2::{define_class, msg_send_id, rc::Retained};
 use objc2_core_bluetooth::{
     CBAdvertisementDataLocalNameKey, CBAdvertisementDataManufacturerDataKey,
     CBAdvertisementDataServiceDataKey, CBAdvertisementDataServiceUUIDsKey,
@@ -336,34 +336,24 @@ impl Debug for CentralDelegateEvent {
 
 define_class!(
     #[derive(Debug)]
+    #[unsafe(super(NSObject))]
+    #[ivars = Sender<CentralDelegateEvent>]
     pub struct CentralDelegate;
 
-    unsafe impl ClassType for CentralDelegate {
-        type Super = NSObject;
-        type Mutability = mutability::InteriorMutable;
-        const NAME: &'static str = "BtlePlugCentralManagerDelegate";
-    }
-
-    impl DefinedClass for CentralDelegate {
-        type Ivars = Sender<CentralDelegateEvent>;
-    }
-
-    unsafe impl NSObjectProtocol for CentralDelegate {}
-
-    unsafe impl CBCentralManagerDelegate for CentralDelegate {
-        #[method(centralManagerDidUpdateState:)]
+    impl CentralDelegate {
+        #[unsafe(method(centralManagerDidUpdateState:))]
         fn delegate_centralmanagerdidupdatestate(&self, central: &CBCentralManager) {
             trace!("delegate_centralmanagerdidupdatestate");
             let state = unsafe { central.state() };
             self.send_event(CentralDelegateEvent::DidUpdateState { state });
         }
 
-        // #[method(centralManager:willRestoreState:)]
+        // #[unsafe(method(centralManager:willRestoreState:))]
         // fn delegate_centralmanager_willrestorestate(&self, _central: &CBCentralManager, _dict: &NSDictionary<NSString, AnyObject>) {
         //     trace!("delegate_centralmanager_willrestorestate");
         // }
 
-        #[method(centralManager:didConnectPeripheral:)]
+        #[unsafe(method(centralManager:didConnectPeripheral:))]
         fn delegate_centralmanager_didconnectperipheral(
             &self,
             _central: &CBCentralManager,
@@ -379,7 +369,7 @@ define_class!(
             self.send_event(CentralDelegateEvent::ConnectedDevice { peripheral_uuid });
         }
 
-        #[method(centralManager:didDisconnectPeripheral:error:)]
+        #[unsafe(method(centralManager:didDisconnectPeripheral:error:))]
         fn delegate_centralmanager_diddisconnectperipheral_error(
             &self,
             _central: &CBCentralManager,
@@ -396,7 +386,7 @@ define_class!(
             self.send_event(CentralDelegateEvent::DisconnectedDevice { peripheral_uuid });
         }
 
-        #[method(centralManager:didFailToConnectPeripheral:error:)]
+        #[unsafe(method(centralManager:didFailToConnectPeripheral:error:))]
         fn delegate_centralmanager_didfailtoconnectperipheral_error(
             &self,
             _central: &CBCentralManager,
@@ -413,7 +403,7 @@ define_class!(
             });
         }
 
-        #[method(centralManager:didDiscoverPeripheral:advertisementData:RSSI:)]
+        #[unsafe(method(centralManager:didDiscoverPeripheral:advertisementData:RSSI:))]
         fn delegate_centralmanager_diddiscoverperipheral_advertisementdata_rssi(
             &self,
             _central: &CBCentralManager,
@@ -515,10 +505,8 @@ define_class!(
                 });
             }
         }
-    }
 
-    unsafe impl CBPeripheralDelegate for CentralDelegate {
-        #[method(peripheral:didDiscoverServices:)]
+        #[unsafe(method(peripheral:didDiscoverServices:))]
         fn delegate_peripheral_diddiscoverservices(
             &self,
             peripheral: &CBPeripheral,
@@ -553,7 +541,7 @@ define_class!(
             }
         }
 
-        #[method(peripheral:didDiscoverIncludedServicesForService:error:)]
+        #[unsafe(method(peripheral:didDiscoverIncludedServicesForService:error:))]
         fn delegate_peripheral_diddiscoverincludedservicesforservice_error(
             &self,
             peripheral: &CBPeripheral,
@@ -574,7 +562,7 @@ define_class!(
             }
         }
 
-        #[method(peripheral:didDiscoverCharacteristicsForService:error:)]
+        #[unsafe(method(peripheral:didDiscoverCharacteristicsForService:error:))]
         fn delegate_peripheral_diddiscovercharacteristicsforservice_error(
             &self,
             peripheral: &CBPeripheral,
@@ -609,7 +597,7 @@ define_class!(
             }
         }
 
-        #[method(peripheral:didDiscoverDescriptorsForCharacteristic:error:)]
+        #[unsafe(method(peripheral:didDiscoverDescriptorsForCharacteristic:error:))]
         fn delegate_peripheral_diddiscoverdescriptorsforcharacteristic_error(
             &self,
             peripheral: &CBPeripheral,
@@ -647,7 +635,7 @@ define_class!(
             }
         }
 
-        #[method(peripheral:didUpdateValueForCharacteristic:error:)]
+        #[unsafe(method(peripheral:didUpdateValueForCharacteristic:error:))]
         fn delegate_peripheral_didupdatevalueforcharacteristic_error(
             &self,
             peripheral: &CBPeripheral,
@@ -678,7 +666,7 @@ define_class!(
             }
         }
 
-        #[method(peripheral:didWriteValueForCharacteristic:error:)]
+        #[unsafe(method(peripheral:didWriteValueForCharacteristic:error:))]
         fn delegate_peripheral_didwritevalueforcharacteristic_error(
             &self,
             peripheral: &CBPeripheral,
@@ -707,7 +695,7 @@ define_class!(
             }
         }
 
-        #[method(peripheral:didUpdateNotificationStateForCharacteristic:error:)]
+        #[unsafe(method(peripheral:didUpdateNotificationStateForCharacteristic:error:))]
         fn delegate_peripheral_didupdatenotificationstateforcharacteristic_error(
             &self,
             peripheral: &CBPeripheral,
@@ -738,7 +726,7 @@ define_class!(
             }
         }
 
-        #[method(peripheral:didReadRSSI:error:)]
+        #[unsafe(method(peripheral:didReadRSSI:error:))]
         fn delegate_peripheral_didreadrssi_error(
             &self,
             peripheral: &CBPeripheral,
@@ -760,7 +748,7 @@ define_class!(
             }
         }
 
-        #[method(peripheral:didUpdateValueForDescriptor:error:)]
+        #[unsafe(method(peripheral:didUpdateValueForDescriptor:error:))]
         fn delegate_peripheral_didupdatevaluefordescriptor_error(
             &self,
             peripheral: &CBPeripheral,
@@ -795,7 +783,7 @@ define_class!(
             }
         }
 
-        #[method(peripheral:didWriteValueForDescriptor:error:)]
+        #[unsafe(method(peripheral:didWriteValueForDescriptor:error:))]
         fn delegate_peripheral_didwritevaluefordescriptor_error(
             &self,
             peripheral: &CBPeripheral,
@@ -828,7 +816,7 @@ define_class!(
             }
         }
 
-        #[method(peripheral:didModifyServices:)]
+        #[unsafe(method(peripheral:didModifyServices:))]
         fn delegate_peripheral_didmodifyservices(
             &self,
             peripheral: &CBPeripheral,
@@ -850,7 +838,7 @@ define_class!(
             });
         }
 
-        #[method(peripheralIsReadyToSendWriteWithoutResponse:)]
+        #[unsafe(method(peripheralIsReadyToSendWriteWithoutResponse:))]
         fn delegate_peripheral_is_ready_to_send_write_without_response(
             &self,
             peripheral: &CBPeripheral,
@@ -866,6 +854,12 @@ define_class!(
             });
         }
     }
+
+    unsafe impl NSObjectProtocol for CentralDelegate {}
+
+    unsafe impl CBCentralManagerDelegate for CentralDelegate {}
+
+    unsafe impl CBPeripheralDelegate for CentralDelegate {}
 );
 
 impl CentralDelegate {
